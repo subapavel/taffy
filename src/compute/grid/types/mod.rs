@@ -10,7 +10,7 @@ mod named;
 pub(super) use cell_occupancy::{CellOccupancyMatrix, CellOccupancyState};
 pub(crate) use coordinates::{GridCoordinate, GridLine, OriginZeroLine};
 pub(super) use grid_item::GridItem;
-pub(super) use grid_track::GridTrack;
+pub(super) use grid_track::{AxisTrackFlags, GridTrack};
 pub(super) use grid_track_counts::TrackCounts;
 pub(super) use named::NamedLineResolver;
 

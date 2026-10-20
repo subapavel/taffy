@@ -1,6 +1,6 @@
 //! Implements the track sizing algorithm
 //! <https://www.w3.org/TR/css-grid-1/#layout-algorithm>
-use super::types::{GridItem, GridTrack, TrackCounts};
+use super::types::{AxisTrackFlags, GridItem, GridTrack, TrackCounts};
 use crate::geometry::{AbstractAxis, Line, Size};
 use crate::style::{AlignContent, AlignSelf, AvailableSpace};
 use crate::style_helpers::TaffyMinContent;
@@ -80,6 +80,8 @@ where
     axis: AbstractAxis,
     /// The available grid space
     inner_node_size: Size<Option<f32>>,
+    /// Facts about all tracks of `axis`, computed once for the whole call of `resolve_intrinsic_track_sizes`
+    axis_track_flags: AxisTrackFlags,
 }
 
 impl<Tree, EstimateFunction> IntrinsicSizeMeasurer<'_, '_, Tree, EstimateFunction>
@@ -145,8 +147,14 @@ where
     fn minimum_contribution(&mut self, item: &mut GridItem, axis_tracks: &[GridTrack]) -> f32 {
         let available_space = self.available_space(item);
         let margin_axis_sums = self.margins_axis_sums_with_baseline_shims(item);
-        let contribution =
-            item.minimum_contribution_cached(self.tree, self.axis, axis_tracks, available_space, self.inner_node_size);
+        let contribution = item.minimum_contribution_cached(
+            self.tree,
+            self.axis,
+            axis_tracks,
+            self.axis_track_flags,
+            available_space,
+            self.inner_node_size,
+        );
         contribution + margin_axis_sums.get(self.axis)
     }
 }
@@ -554,8 +562,16 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
 
     let axis_inner_node_size = inner_node_size.get(axis);
     let flex_factor_sum = axis_tracks.iter().map(|track| track.flex_factor()).sum::<f32>();
-    let mut item_sizer =
-        IntrinsicSizeMeasurer { tree, other_axis_tracks, axis, inner_node_size, get_track_size_estimate };
+    // The two per-axis facts that `minimum_contribution` needs for every item: computed once here, not once per item
+    let axis_track_flags = AxisTrackFlags::of(axis_tracks);
+    let mut item_sizer = IntrinsicSizeMeasurer {
+        tree,
+        other_axis_tracks,
+        axis,
+        inner_node_size,
+        get_track_size_estimate,
+        axis_track_flags,
+    };
 
     let mut batched_item_iterator = ItemBatcher::new(axis);
     while let Some((batch, is_flex)) = batched_item_iterator.next(items) {
@@ -931,6 +947,9 @@ fn resolve_intrinsic_track_sizes<Tree: LayoutPartialTree>(
         .iter_mut()
         .filter(|track| track.growth_limit == f32::INFINITY)
         .for_each(|track| track.growth_limit = track.base_size);
+
+    // Sizing never changes the sizing functions, so the flags computed above held for the whole pass
+    debug_assert_eq!(AxisTrackFlags::of(axis_tracks), axis_track_flags);
 }
 
 /// 11.5.1. Distributing Extra Space Across Spanned Tracks

@@ -1,5 +1,5 @@
 //! Contains GridItem used to represent a single grid item during layout
-use super::GridTrack;
+use super::{AxisTrackFlags, GridTrack};
 use crate::compute::grid::OriginZeroLine;
 use crate::geometry::AbstractAxis;
 use crate::geometry::{Line, Point, Rect, Size};
@@ -461,6 +461,7 @@ impl GridItem {
         tree: &mut impl LayoutPartialTree,
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
+        axis_flags: AxisTrackFlags,
         known_dimensions: Size<Option<f32>>,
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
@@ -494,14 +495,13 @@ impl GridItem {
                 // TODO: support overflow property
 
                 // it spans at least one track in that axis whose min track sizing function is auto
-                let spans_auto_min_track = axis_tracks
-                    .iter()
-                    // TODO: should this be 'behaves as auto' rather than just literal auto?
-                    .any(|track| track.min_track_sizing_function.is_auto());
+                // Note: like before, this looks at every track of the axis, not only the spanned ones. The scan is done
+                // once per axis by the caller (`AxisTrackFlags::of`), not once per item.
+                let spans_auto_min_track = axis_flags.any_auto_min;
 
                 // if it spans more than one track in that axis, none of those tracks are flexible
                 let only_span_one_track = item_axis_tracks.len() == 1;
-                let spans_a_flexible_track = axis_tracks.iter().any(|track| track.max_track_sizing_function.is_fr());
+                let spans_a_flexible_track = axis_flags.any_flexible_max;
 
                 let use_content_based_minimum =
                     spans_auto_min_track && (only_span_one_track || !spans_a_flexible_track);
@@ -543,11 +543,13 @@ impl GridItem {
         tree: &mut impl LayoutPartialTree,
         axis: AbstractAxis,
         axis_tracks: &[GridTrack],
+        axis_flags: AxisTrackFlags,
         known_dimensions: Size<Option<f32>>,
         inner_node_size: Size<Option<f32>>,
     ) -> f32 {
         self.minimum_contribution_cache.get(axis).unwrap_or_else(|| {
-            let size = self.minimum_contribution(tree, axis, axis_tracks, known_dimensions, inner_node_size);
+            let size =
+                self.minimum_contribution(tree, axis, axis_tracks, axis_flags, known_dimensions, inner_node_size);
             self.minimum_contribution_cache.set(axis, Some(size));
             size
         })
